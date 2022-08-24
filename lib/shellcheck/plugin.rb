@@ -1,4 +1,5 @@
 require 'set'
+require 'shellcheck/runner'
 
 module Danger
   # Shows the warnings and suggestions for shell scripts generated from ShellCheck.
@@ -24,6 +25,12 @@ module Danger
     # @return   [Boolean] sticky
     attr_accessor :sticky_summary
 
+    attr_accessor :binary_path
+
+    OPTION_OVERRIDES = {
+      format: :json
+    }.freeze
+
     def project_root
       root = @project_root || Dir.pwd
       root += '/' unless root.end_with? '/'
@@ -41,6 +48,15 @@ module Danger
     def report(file_path)
       raise 'ShellCheck summary file not found' unless File.file?(file_path)
       shellcheck_summary = JSON.parse(File.read(file_path), symbolize_names: true)
+      run_summary(shellcheck_summary)
+    end
+
+    def run(options = {})
+      runner = Shellcheck::Runner.new(binary_path)
+      changed_files = files_in_diff
+      return if changed_files.empty?
+      out = runner.run(changed_files, options.merge(OPTION_OVERRIDES))
+      shellcheck_summary = JSON.parse(out, symbolize_names: true)
       run_summary(shellcheck_summary)
     end
 
@@ -94,6 +110,15 @@ module Danger
     #
     def format_violation(file, violation)
       "#{file}: #L#{violation[:line]} -> #{violation[:code]} - #{violation[:message]}"
+    end
+
+    def files_in_diff
+      # Taken from https://github.com/ashfurrow/danger-ruby-swiftlint/blob/5184909aab00f12954088684bbf2ce5627e08ed6/lib/danger_plugin.rb#L214-L216
+      renamed_files_hash = git.renamed_files.to_h { |rename| [rename[:before], rename[:after]] }
+      post_rename_modified_files = git.modified_files.map do |modified_file|
+        renamed_files_hash[modified_file] || modified_file
+      end
+      (post_rename_modified_files - git.deleted_files) + git.added_files
     end
   end
 end
