@@ -32,3 +32,5 @@ gem 'coveralls', require: false
 #
 # This will stop test execution and let you inspect the results
 gem 'pry'
+
+gem 'danger'
